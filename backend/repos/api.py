@@ -3,15 +3,23 @@ from datetime import datetime
 
 from git.exc import BadName, GitCommandError
 
-from rest_framework import status, viewsets
+from rest_framework import mixins, status, viewsets
 from rest_framework.response import Response
 
-from utils.mixins import BaseGenericViewSet
-
-from app.repo import GitRepo
+from app.repo import initialize_repo
 from app.urls import router
 
-repo = GitRepo().repo
+from repos import serializers
+from repos.models import PR
+
+from utils.mixins import (
+    BaseGenericViewSet,
+    CreateModelMixin,
+    ListModelMixin,
+    UpdateModelMixin
+)
+
+repo = initialize_repo()
 
 
 class BranchViewset(viewsets.GenericViewSet,
@@ -24,13 +32,13 @@ class BranchViewset(viewsets.GenericViewSet,
 
     def list(self, request, *args, **kwargs):
         branch_list = [
-            {"branch": branch.name.split('/')[1]}
-            for branch in list(repo.remote().refs)[1:]
+            {"branch": branch.name}
+            for branch in list(repo.heads)
         ]
         return Response(branch_list, status=status.HTTP_200_OK)
 
     def retrieve(self, request, *args, **kwargs):
-        branch = kwargs.get('branch')
+        branch = self.request.query_params.get('branch')
         try:
             commit_list = [
                 {
@@ -114,6 +122,68 @@ class CommitViewset(viewsets.GenericViewSet,
         )
 
 
+class PRViewset(CreateModelMixin,
+                ListModelMixin,
+                mixins.RetrieveModelMixin,
+                UpdateModelMixin,
+                viewsets.GenericViewSet,
+                BaseGenericViewSet):
+    """
+    API endpoint to create, list, and retrieve PRs.
+    """
+    serializer_class = serializers.PRSerializer
+    create_serializer_class = serializers.PRCreateSerializer
+    list_serializer_class = serializers.PRListSerializer
+    update_serializer_class = serializers.PRUpdateSerializer
+
+    queryset = PR.objects.all().order_by('-created_at')
+
+    def create(self, request, *args, **kwargs):
+        request.data["author_name"] = repo \
+            .config_reader() \
+            .get_value("user", "name")
+
+        request.data["author_email"] = repo \
+            .config_reader() \
+            .get_value("user", "email")
+
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        message = ""
+
+        instance = self.get_object()
+        serializer = self.get_serializer(
+            instance, data=request.data, partial=True, action='update'
+        )
+        serializer.is_valid(raise_exception=True)
+
+        if request.data.get('status') == 'merged':
+            try:
+                base = repo.heads[instance.base]
+                compare = repo.heads[instance.compare]
+
+                base_commit = repo.merge_base(base, compare)
+                repo.index.merge_tree(compare, base=base_commit)
+                repo.index.commit(
+                    f"Merged '{compare}' into '{base}'",
+                    parent_commits=(base.commit, compare.commit)
+                )
+                compare.checkout(force=True)
+                message = f"PR #{instance.id} merged successfully"
+            except Exception as e:
+                return Response(
+                    {"message": e},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+        if request.data.get('status') == 'closed':
+            message = f"PR #{instance.id} closed successfully"
+
+        serializer.save()
+        return Response({"message": message}, status=status.HTTP_200_OK)
+
+
 router.register(
     r'branches',
     BranchViewset,
@@ -124,4 +194,10 @@ router.register(
     r'commits',
     CommitViewset,
     basename='commit'
+)
+
+router.register(
+    r'prs',
+    PRViewset,
+    basename='pr'
 )

@@ -4,8 +4,7 @@ from git import Repo
 from git.exc import GitCommandError
 
 
-class GitRepo(Repo):
-    _instance = None
+def initialize_repo():
     try:
         repo = Repo.clone_from(
             'https://github.com/manuelurgell/fullstack-interview-test',
@@ -16,11 +15,18 @@ class GitRepo(Repo):
             repo = Repo('fullstack-interview-test')
         else:
             print(type(gce).__name__, gce.args)
-            raise gce
+    except Exception as e:
+        print(type(e).__name__, e.args)
+        raise e
+
+    for branch in repo.remote().fetch():
+        repo.git.checkout('-B', branch.name.split('/', 1)[1], branch.name)
 
     repo.config_writer().set_value(
         "user", "name", settings.GITHUB_USER_NAME
     ).release()
     repo.config_writer().set_value(
-        "user", "email", settings.GITHUB_USER_NAME
+        "user", "email", settings.GITHUB_USER_EMAIL
     ).release()
+
+    return repo

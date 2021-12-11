@@ -25,7 +25,6 @@ router = DefaultRouter(trailing_slash=False)
 
 
 def auto_import_urls():
-    print("NAMES: ", settings.GITHUB_USER_NAME, settings.GITHUB_USER_NAME)
     for app in settings.LOCAL_APPS:
         try:
             import_module(f"{app}.api")

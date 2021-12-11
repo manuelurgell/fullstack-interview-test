@@ -156,7 +156,7 @@ if DEBUG:
             'werkzeug': {
                 'handlers': ['console'],
                 'level': 'DEBUG',
-                'propagate': True,
+                'propagate': False,
             },
         },
     }
