@@ -1,0 +1,64 @@
+version: "3.9"
+
+services:
+  database:
+    container_name: database
+    image: postgres
+    user: ${POSTGRES_USER}
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    ports:
+      - ${POSTGRES_PORT:-5432}:5432
+    restart: unless-stopped
+    healthcheck:
+      test: "usr/bin/pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+      interval: 2s
+      timeout: 2s
+      retries: 5
+
+  backend:
+    container_name: backend
+    build:
+      context: ./backend
+      args:
+        DEBUG: ${DEBUG:-False}
+    environment:
+      - DEBUG=${DEBUG:-False}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - GITHUB_USER_NAME=${GITHUB_USER_NAME}
+      - GITHUB_USER_EMAIL=${GITHUB_USER_EMAIL}
+    volumes:
+      - ${BACKEND_LOCAL_VOLUME:-./backend}:${BACKEND_CONTAINER_VOLUME:-/app}
+    ports:
+      - ${BACKEND_PORT:-8000}:8000
+      - ${BACKEND_STATIC_PORT:-8001}:8001
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+
+  # frontend:
+  #   container_name: backend
+  #   build:
+  #     context: ./frontend
+  #     args:
+  #       REACT_API_HOST: ${DEBUG:-False}
+  #   environment:
+  #     - DEBUG=${DEBUG:-False}
+  #     - POSTGRES_USER=${POSTGRES_USER}
+  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+  #     - POSTGRES_DB=${POSTGRES_DB}
+  #     - POSTGRES_HOST=${POSTGRES_HOST}
+  #     - POSTGRES_PORT=${POSTGRES_PORT}
+  #   volumes:
+  #     - ${BACKEND_LOCAL_VOLUME:-./backend}:${BACKEND_CONTAINER_VOLUME:-/app}
+  #   ports:
+  #     - ${BACKEND_PORT:-8000}:8000
+  #     - ${BACKEND_STATIC_PORT:-8001}:8001
+  #   restart: unless-stopped
